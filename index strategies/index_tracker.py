@@ -3,6 +3,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
 import time
+import requests
 from datetime import datetime
 import market_data
 
@@ -68,6 +69,9 @@ elif strategy_mode == "ORB Strategy":
 st.sidebar.markdown("---")
 st.sidebar.markdown("## 🔔 Push Notifications")
 enable_notifications = st.sidebar.checkbox("Enable Signal Alerts", value=False)
+# Always initialise so render_dashboard() can safely reference them
+bot_token = ""
+chat_id = ""
 if enable_notifications:
     st.sidebar.write("To receive alerts, enter your Telegram details:")
     bot_token = st.sidebar.text_input("Bot Token", type="password")
