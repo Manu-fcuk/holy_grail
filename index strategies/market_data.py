@@ -134,39 +134,78 @@ def calculate_signals(df):
     
     return df
 
+import feedparser
+
 def get_news_sentiment(ticker):
     """
-    Fetch news and calculate sentiment.
+    Fetch news and calculate sentiment. Uses yfinance first, then falls back to RSS.
     """
+    # Remove ^ for better search in some news engines if needed
+    clean_ticker = ticker.replace('^', '')
+    
+    processed_news = []
+    
+    # 1. Try yfinance Native News
     try:
         ticker_obj = yf.Ticker(ticker)
         news_list = ticker_obj.news
-        
-        processed_news = []
-        for news in news_list:
-            title = news.get("title", "")
-            summary = news.get("summary", "") # Not always available in yf, sometimes 'text'
-            
-            # Combine title and summary for sentiment
-            text_to_analyze = f"{title}. {summary}" if summary else title
-            sentiment_score = TextBlob(text_to_analyze).sentiment.polarity
-            
-            sentiment_label = "Neutral"
-            if sentiment_score > 0.1:
-                sentiment_label = "Positive"
-            elif sentiment_score < -0.1:
-                sentiment_label = "Negative"
+        if news_list:
+            for news in news_list:
+                title = news.get("title", "")
+                summary = news.get("summary", "")
+                text_to_analyze = f"{title}. {summary}" if summary else title
+                sentiment_score = TextBlob(text_to_analyze).sentiment.polarity
                 
-            processed_news.append({
-                "title": title,
-                "link": news.get("link", "#"),
-                "publisher": news.get("publisher", "Unknown"),
-                "sentiment": sentiment_label,
-                "score": sentiment_score,
-                "published": datetime.fromtimestamp(news.get("providerPublishTime", 0))
-            })
-            
-        return pd.DataFrame(processed_news)
+                processed_news.append({
+                    "title": title,
+                    "link": news.get("link", "#"),
+                    "publisher": news.get("publisher", "Unknown"),
+                    "sentiment": "Positive" if sentiment_score > 0.1 else ("Negative" if sentiment_score < -0.1 else "Neutral"),
+                    "score": sentiment_score,
+                    "published": datetime.fromtimestamp(news.get("providerPublishTime", 0)).strftime("%Y-%m-%d %H:%M")
+                })
     except Exception as e:
-        print(f"Error fetching news: {e}")
-        return pd.DataFrame()
+        print(f"yfinance news error: {e}")
+
+    # 2. If empty, try Yahoo Finance RSS for the Ticker
+    if not processed_news:
+        try:
+            rss_url = f"https://finance.yahoo.com/rss/headline?s={ticker}"
+            feed = feedparser.parse(rss_url)
+            for entry in feed.entries:
+                title = entry.get("title", "")
+                summary = entry.get("summary", "")
+                text_to_analyze = f"{title}. {summary}" if summary else title
+                sentiment_score = TextBlob(text_to_analyze).sentiment.polarity
+                
+                processed_news.append({
+                    "title": title,
+                    "link": entry.get("link", "#"),
+                    "publisher": "Yahoo Finance RSS",
+                    "sentiment": "Positive" if sentiment_score > 0.1 else ("Negative" if sentiment_score < -0.1 else "Neutral"),
+                    "score": sentiment_score,
+                    "published": entry.get("published", "N/A")
+                })
+        except Exception as e:
+            print(f"RSS news error: {e}")
+
+    # 3. Last Fallback: General Market News if still empty
+    if not processed_news:
+        try:
+            general_url = "https://finance.yahoo.com/news/rssindex"
+            feed = feedparser.parse(general_url)
+            for entry in feed.entries[:10]: # Top 10 general stories
+                title = entry.get("title", "")
+                sentiment_score = TextBlob(title).sentiment.polarity
+                processed_news.append({
+                    "title": f"[Market] {title}",
+                    "link": entry.get("link", "#"),
+                    "publisher": "Yahoo News",
+                    "sentiment": "Positive" if sentiment_score > 0.1 else ("Negative" if sentiment_score < -0.1 else "Neutral"),
+                    "score": sentiment_score,
+                    "published": entry.get("published", "N/A")
+                })
+        except Exception:
+            pass
+
+    return pd.DataFrame(processed_news)

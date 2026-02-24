@@ -5,3 +5,6 @@ numpy
 requests
 plotly
 matplotlib
+feedparser
+ta
+textblob
