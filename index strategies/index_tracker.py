@@ -260,31 +260,48 @@ def render_dashboard():
     
     chart_placeholder.plotly_chart(fig, use_container_width=True)
 
-    # 5. News
-    # (Only fetch news if we haven't in a while or on first load to save API calls? 
-    # For now, keep it simple as user requested live updates)
+    # 5. News & Sentiment
     with news_placeholder.container():
-        st.markdown("### Latest News & Sentiment")
-        news_df = market_data.get_news_sentiment(ticker_symbol)
+        st.markdown("### 📰 Latest News & Sentiment")
+        SENT_COLORS = {"Positive": "#00C853", "Negative": "#D50000", "Neutral": "#FFAB00"}
+        SENT_EMOJIS = {"Positive": "🟢", "Negative": "🔴", "Neutral": "🟡"}
+        with st.spinner("Fetching latest news..."):
+            news_df = market_data.get_news_sentiment(ticker_symbol)
         if not news_df.empty:
             avg_sentiment = news_df['score'].mean()
-            sent_text = "Neutral"
-            color = "gray"
+            sent_text = "Neutral ⚖️"
+            sent_color = "#FFAB00"
             if avg_sentiment > 0.05:
-                sent_text = "Positive"
-                color = "green"
+                sent_text = "Positive 📈"
+                sent_color = "#00C853"
             elif avg_sentiment < -0.05:
-                sent_text = "Negative"
-                color = "red"
-            
-            st.markdown(f"**Overall Sentiment**: <span style='color:{color}; font-weight:bold'>{sent_text}</span>", unsafe_allow_html=True)
-            
-            for _, row in news_df.head(5).iterrows():
-                with st.expander(f"{row['sentiment']} | {row['title']}"):
-                    st.write(f"**Source**: {row['publisher']} | **Time**: {row['published']}")
-                    st.write(f"[Read Article]({row['link']})")
+                sent_text = "Negative 📉"
+                sent_color = "#D50000"
+            pct = min(max((avg_sentiment + 1) / 2 * 100, 0), 100)
+            st.markdown(
+                f"<div style='margin-bottom:12px;'><b>Overall Sentiment:</b> "
+                f"<span style='color:{sent_color};font-weight:bold;font-size:1.1em;'> {sent_text}</span>"
+                f" &nbsp;&nbsp;(Score: {avg_sentiment:.2f} | {len(news_df)} articles)</div>"
+                f"<div style='background:#1e2228;border-radius:8px;height:10px;margin-bottom:18px;'>"
+                f"<div style='background:{sent_color};width:{pct:.0f}%;height:10px;border-radius:8px;'></div></div>",
+                unsafe_allow_html=True
+            )
+            for _, row in news_df.head(12).iterrows():
+                s = row.get('sentiment', 'Neutral')
+                badge_color = SENT_COLORS.get(s, "#FFAB00")
+                emoji = SENT_EMOJIS.get(s, "🟡")
+                st.markdown(
+                    f"<div style='background:#161b22;border-left:4px solid {badge_color};"
+                    f"padding:10px 14px;margin-bottom:8px;border-radius:6px;'>"
+                    f"<div style='font-size:0.8em;color:{badge_color};margin-bottom:3px;'>"
+                    f"{emoji} <b>{s}</b> &nbsp;|&nbsp; {row.get('publisher','N/A')} &nbsp;|&nbsp; {row.get('published','N/A')}</div>"
+                    f"<a href='{row.get('link','#')}' target='_blank' style='color:#e6edf3;text-decoration:none;font-weight:bold;'>"
+                    f"{row.get('title','No title')}</a></div>",
+                    unsafe_allow_html=True
+                )
         else:
-            st.write("No recent news found.")
+            st.info("No recent news found. Try a different ticker or check your connection.")
+
 
 
 render_dashboard()
