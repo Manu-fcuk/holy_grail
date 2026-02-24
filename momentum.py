@@ -74,11 +74,14 @@ def calc_rsi(prices, window=14):
     loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
     return 100 - (100 / (1 + (gain / loss.replace(0, np.nan)).ffill()))
 
-@st.cache_data(ttl=3600)
 def get_sp500_list():
     _, companies = get_db_data()
     if companies is not None:
         return companies['Symbol'].tolist()
+    return fetch_sp500_wiki()
+
+@st.cache_data(ttl=3600)
+def fetch_sp500_wiki():
     try:
         url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
         headers = {'User-Agent': 'Mozilla/5.0'}
@@ -270,11 +273,18 @@ with t4:
             e_date = f"{bt_e_year}-12-31"
             
             # Check if DB can fulfill the request (including a buffer for moving averages)
-            s_p = (datetime.strptime(s_date, "%Y-%m-%d") - timedelta(days=450)).strftime("%Y-%m-%d")
+            s_p_date = datetime.strptime(s_date, "%Y-%m-%d") - timedelta(days=450)
+            s_p = s_p_date.strftime("%Y-%m-%d")
             
-            if db_prices is not None and s_p in db_prices.index and e_date in db_prices.index:
-                 st.info("Using Database for Backtest...")
-                 bt_data_full = db_prices.loc[s_p:e_date]
+            if db_prices is not None and not db_prices.empty:
+                 db_start = db_prices.index[0]
+                 db_end = db_prices.index[-1]
+                 if db_start <= s_p_date and db_end >= datetime.strptime(s_date, "%Y-%m-%d"):
+                      st.info("Using Database for Backtest...")
+                      bt_data_full = db_prices.loc[s_p:e_date]
+                 else:
+                      st.info("Downloading missing history from yfinance...")
+                      bt_data_full = yf.download(ticks_bt + ["^GSPC"], start=s_p, end=e_date, progress=False, threads=True, auto_adjust=True)['Close']
             else:
                  st.info("Downloading missing history from yfinance...")
                  bt_data_full = yf.download(ticks_bt + ["^GSPC"], start=s_p, end=e_date, progress=False, threads=True, auto_adjust=True)['Close']
