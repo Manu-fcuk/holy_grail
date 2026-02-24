@@ -142,6 +142,12 @@ def render_dashboard():
         sell_signals = df[(df['Position_Change'] < 0) & (df[signal_col] == -1)]
         current_state_val = df[signal_col].iloc[-1]
 
+    # Metrics
+    latest_close = df['Close'].iloc[-1]
+    last_price = df['Close'].iloc[-2] if len(df) > 1 else latest_close
+    price_change = latest_close - last_price
+    pct_change = (price_change / last_price) * 100
+
     # --- Notification Trigger ---
     if enable_notifications and bot_token and chat_id:
         # Check if the very last candle triggered a new signal
@@ -167,12 +173,6 @@ def render_dashboard():
                 send_telegram_msg(bot_token, chat_id, msg)
                 st.session_state[alert_key] = True
                 st.toast(f"Telegram Alert Sent: {direction}!", icon="🔔")
-
-    # Metrics
-    latest_close = df['Close'].iloc[-1]
-    last_price = df['Close'].iloc[-2] if len(df) > 1 else latest_close
-    price_change = latest_close - last_price
-    pct_change = (price_change / last_price) * 100
     
     current_signal_text = "N/A"
     signal_color = "off"
