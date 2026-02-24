@@ -99,9 +99,13 @@ def send_telegram_msg(token, chat_id, message):
     try:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
-        requests.post(url, json=payload)
+        resp = requests.post(url, json=payload, timeout=10)
+        data = resp.json()
+        if not data.get("ok"):
+            err = data.get("description", "Unbekannter Fehler")
+            st.error(f"❌ Telegram Fehler: {err}\n\nTipp: Stelle sicher, dass du dem Bot eine Nachricht geschickt hast und die Chat ID korrekt ist.")
     except Exception as e:
-        st.error(f"Telegram Error: {e}")
+        st.error(f"❌ Telegram Verbindungsfehler: {e}")
 
 def render_dashboard():
     # 1. Fetch Data
