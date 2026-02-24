@@ -258,7 +258,7 @@ def render_dashboard():
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     
-    chart_placeholder.plotly_chart(fig, use_container_width=True)
+    chart_placeholder.plotly_chart(fig, width='stretch')
 
     # 5. News & Sentiment
     with news_placeholder.container():
