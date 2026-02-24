@@ -9,9 +9,10 @@ import time
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import io
 
 # --- 1. SETUP & THEME ---
-st.set_page_config(page_title="Alpha Terminal Pro v11.9.7", layout="wide")
+st.set_page_config(page_title="Alpha Terminal Pro", layout="wide")
 
 # Use relative path for portability (Streamlit Cloud / Local)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -85,7 +86,8 @@ def fetch_sp500_wiki():
     try:
         url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
         headers = {'User-Agent': 'Mozilla/5.0'}
-        df = pd.read_html(requests.get(url, headers=headers).text)[0]
+        html_text = requests.get(url, headers=headers).text
+        df = pd.read_html(io.StringIO(html_text))[0]
         return [t.replace('.', '-') for t in df['Symbol'].tolist()]
     except: return ["NVDA", "AAPL", "MSFT", "GOOGL", "AMZN", "META"]
 

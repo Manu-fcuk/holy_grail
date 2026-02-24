@@ -4,6 +4,7 @@ import sqlite3
 import requests
 from datetime import datetime
 import os
+import io
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "market_data.db")
@@ -12,7 +13,8 @@ def get_sp500_list():
     try:
         url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
         headers = {'User-Agent': 'Mozilla/5.0'}
-        df = pd.read_html(requests.get(url, headers=headers).text)[0]
+        html_text = requests.get(url, headers=headers).text
+        df = pd.read_html(io.StringIO(html_text))[0]
         df['Symbol'] = df['Symbol'].str.replace('.', '-')
         return df[['Symbol', 'Security', 'GICS Sector']]
     except Exception as e:

@@ -8,3 +8,5 @@ ta
 textblob
 feedparser
 matplotlib
+lxml
+html5lib
