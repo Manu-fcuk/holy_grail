@@ -15,7 +15,8 @@ st.set_page_config(page_title="Alpha Terminal Pro v11.9.7", layout="wide")
 
 # Use relative path for portability (Streamlit Cloud / Local)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "market_data.db")
+# Streamlit Cloud executes this from root, so data is in Database folder
+DB_PATH = os.path.join(BASE_DIR, "Database", "market_data.db")
 
 st.markdown("""
     <style>
@@ -120,7 +121,7 @@ with st.sidebar:
     if st.button("🔄 Update DB Now"):
         with st.status("Updating Local Database..."):
             import subprocess
-            updater_path = os.path.join(BASE_DIR, "db_updater.py")
+            updater_path = os.path.join(BASE_DIR, "Database", "db_updater.py")
             subprocess.run(["python3", updater_path])
             st.success("Database Updated!")
 
