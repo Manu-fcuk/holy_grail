@@ -30,8 +30,8 @@ def send_telegram(message):
 
 def get_signal():
     try:
-        # Fetch enough data for EMAs
-        df = yf.download(SYMBOL, period="1d", interval=INTERVAL, progress=False)
+        # Fetch enough data for EMAs (5d ensures we have enough data at market open)
+        df = yf.download(SYMBOL, period="5d", interval=INTERVAL, progress=False)
         if df.empty or len(df) < EMA_SLOW:
             return None, None
 
@@ -47,7 +47,7 @@ def get_signal():
         current_slow = df['EMA_Slow'].iloc[-1]
         prev_fast = df['EMA_Fast'].iloc[-2]
         prev_slow = df['EMA_Slow'].iloc[-2]
-        price = df['Close'].iloc[-1]
+        price = float(df['Close'].iloc[-1])
 
         # Buy Signal: Fast crosses above Slow
         if prev_fast <= prev_slow and current_fast > current_slow:
@@ -94,7 +94,8 @@ def main():
                     print(f"[{now_str}] Signal Sent: {signal} at {price:.2f}")
                     last_signal_time = current_min
             else:
-                print(f"[{now_str}] Scanned {SYMBOL} at {price:.2f if price else 'N/A'} - No Crossover")
+                p_str = f"${price:.2f}" if price is not None else "N/A"
+                print(f"[{now_str}] Scanned {SYMBOL} at {p_str} - No Crossover")
             
             # Wait 60 seconds for the next candle
             time.sleep(60)
