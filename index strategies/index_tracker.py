@@ -68,14 +68,15 @@ elif strategy_mode == "ORB Strategy":
 # --- Notifications Setup ---
 st.sidebar.markdown("---")
 st.sidebar.markdown("## 🔔 Push Notifications")
-enable_notifications = st.sidebar.checkbox("Enable Signal Alerts", value=False)
-# Always initialise so render_dashboard() can safely reference them
-bot_token = ""
-chat_id = ""
+enable_notifications = st.sidebar.checkbox("Enable Signal Alerts", value=True)
+# Pre-filled credentials
+bot_token = "8779026924:AAFpdJUJsJwlbPBui25kjM00XJ6VevmUj-s"
+chat_id = "5573886447"
+
 if enable_notifications:
-    st.sidebar.write("To receive alerts, enter your Telegram details:")
-    bot_token = st.sidebar.text_input("Bot Token", type="password")
-    chat_id = st.sidebar.text_input("Chat ID")
+    st.sidebar.write("Telegram Details (Pre-filled):")
+    bot_token = st.sidebar.text_input("Bot Token", value=bot_token, type="password")
+    chat_id = st.sidebar.text_input("Chat ID", value=chat_id)
     if bot_token and chat_id:
         st.sidebar.success("Telegram configured!")
     else:
