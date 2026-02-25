@@ -192,7 +192,7 @@ def get_market_checklist(bm_prices_full_tuple):
     return results
 
 @st.cache_data(ttl=3600)
-def fetch_earnings_calendar_data(tickers):
+def get_earnings_calendar_data(tickers):
     rows = []
     for t in tickers:
         try:
@@ -541,7 +541,7 @@ with t4:
     # --- Earnings Calendar ---
     st.markdown("### 📅 Earnings Kalender — Watchlist")
     with st.spinner("Lade Earnings-Daten..."):
-        earn_df = fetch_earnings_calendar_data(portfolio_list)
+        earn_df = get_earnings_calendar_data(portfolio_list)
     if not earn_df.empty:
         def beat_color(val):
             if 'Beat' in str(val): return 'color: #3fb950; font-weight: bold'
