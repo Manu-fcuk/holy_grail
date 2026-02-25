@@ -270,20 +270,22 @@ def fetch_earnings_calendar_data(tickers):
 
 @st.cache_data(ttl=900)
 def get_market_news_feed():
+    import requests
+    import feedparser
     articles = []
     feeds = [
-        "https://feeds.finance.yahoo.com/rss/2.0/headline?s=^GSPC&region=US&lang=en-US",
-        "https://finance.yahoo.com/news/rssindex",
+        "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664",
         "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
     ]
     for url in feeds:
         try:
-            feed = feedparser.parse(url)
+            r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5)
+            feed = feedparser.parse(r.text)
             for e in feed.entries[:8]:
                 title = e.get('title','').strip()
                 if title:
                     articles.append({"title":title, "link":e.get('link','#'), "published":e.get('published','')[:20]})
-        except:
+        except Exception:
             pass
     return articles[:20]
 
@@ -575,7 +577,8 @@ with t4:
             s_p_date = datetime.strptime(s_date,"%Y-%m-%d") - timedelta(days=450)
             s_p      = s_p_date.strftime("%Y-%m-%d")
 
-            if db_prices is not None and not db_prices.empty and db_prices.index[0]<=s_p_date and db_prices.index[-1]>=datetime.strptime(s_date,"%Y-%m-%d"):
+            has_all  = db_prices is not None and not db_prices.empty and all(t in db_prices.columns for t in ticks_bt)
+            if has_all and db_prices.index[0]<=s_p_date and db_prices.index[-1]>=datetime.strptime(s_date,"%Y-%m-%d"):
                 st.info("Using Database for Backtest...")
                 bt_data_full = db_prices.loc[s_p:e_date]
             else:
