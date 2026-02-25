@@ -110,7 +110,8 @@ def update_database():
             except:
                 return {"Ticker":t,"Name":t,"Earnings Date":"N/A","EPS Est.":"N/A","Rev Est.":"N/A","Last Q Beat/Miss":"N/A"}
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        # Verwende hier maximal 2 Threads und ein Sleep, da Yahoo Finance sonst die IP blockt ("Rate Limit Error")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
             e_rows = list(executor.map(fetch_earn, all_e_tickers))
             
         e_df = pd.DataFrame(e_rows)
