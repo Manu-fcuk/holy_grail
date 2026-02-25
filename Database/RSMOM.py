@@ -193,15 +193,17 @@ def get_market_checklist(bm_prices_full_tuple):
 
 @st.cache_data(ttl=3600)
 def fetch_earnings_calendar_data(tickers):
-
-
     rows = []
     for t in tickers:
         try:
             tk = yf.Ticker(t)
-            info = tk.info or {}
             
-            # 1. --- Get Upcoming Earnings Date ---
+            try:
+                info = tk.info or {}
+            except Exception:
+                info = {}
+            
+            # --- Upcoming Earnings Date ---
             earn_date = "N/A"
             try:
                 cal = tk.calendar
@@ -215,24 +217,22 @@ def fetch_earnings_calendar_data(tickers):
                         future = ed_df[ed_df.index >= pd.Timestamp.now(tz='UTC')]
                         if not future.empty:
                             earn_date = str(future.index[0])[:10]
-            except: pass
+            except Exception: pass
 
-            # 2. --- Get Estimates ---
+            # --- Estimates ---
             eps_est = info.get('epsForwardQuarter') or info.get('forwardEps')
             rev_est = info.get('revenueEstimate') or info.get('totalRevenue')
             if not eps_est:
                 try: 
                     cal = tk.calendar
                     if isinstance(cal, dict): eps_est = cal.get('EPS Estimate')
-                except: pass
+                except Exception: pass
             
-            # 3. --- Last Quarter Beat/Miss (Robust Fallback) ---
+            # --- Last Quarter Beat/Miss ---
             beat_str = "N/A"
-            # Strategy A: Use earnings_history (Best for actuals)
             try:
                 eh = tk.earnings_history
                 if eh is not None and not eh.empty:
-                    # Sort by date descending and get the first one that has actual and estimate
                     eh_clean = eh.dropna(subset=['epsActual', 'epsEstimate']).sort_index(ascending=False)
                     if not eh_clean.empty:
                         last_q = eh_clean.iloc[0]
@@ -241,9 +241,8 @@ def fetch_earnings_calendar_data(tickers):
                         if exp != 0:
                             surp = (act - exp) / abs(exp) * 100
                             beat_str = f"Beat +{surp:.1f}%" if act >= exp else f"Miss {surp:.1f}%"
-            except: pass
+            except Exception: pass
             
-            # Strategy B: Fallback to earnings_dates if history failed
             if beat_str == "N/A":
                 try:
                     ed_df = tk.earnings_dates
@@ -255,8 +254,7 @@ def fetch_earnings_calendar_data(tickers):
                             if pd.notna(est) and est != 0:
                                 surp = (act - est) / abs(est) * 100
                                 beat_str = f"Beat +{surp:.1f}%" if act >= est else f"Miss {surp:.1f}%"
-                except: pass
-
+                except Exception: pass
 
             rows.append({
                 "Ticker": t,
