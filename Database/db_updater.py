@@ -45,9 +45,79 @@ def update_database():
         data.columns = data.columns.get_level_values(0)
 
     # 3. Store in Database
-    # We store it in a long format for easier SQL querying or just as a large table
-    # For simplicity and speed in the scanner, a wide table (Date as index, Tickers as columns) works well for SQLite
     data.to_sql('prices', conn, if_exists='replace', index=True)
+    
+    # 4. Update Earnings Table (multithreaded to speed up)
+    try:
+        print("Downloading earnings data (this takes ~1-2 min)...")
+        import concurrent.futures
+        
+        # Also grab some common requested ones from the watchlist which might not be in the ^GSPC (e.g., PLTR, ASML, TOST, SQ, CRWD...)
+        extra_tickers = ["GOOG", "AAPL", "AMZN", "WMT", "T", "META", "NVDA", "TSLA", "MSFT", "LLY", "GE", "PYPL", "SNAP", "ASML", "PLTR"]
+        all_e_tickers = list(set(tickers + extra_tickers))
+        if "^GSPC" in all_e_tickers: all_e_tickers.remove("^GSPC")
+
+        def fetch_earn(t):
+            try:
+                tk = yf.Ticker(t)
+                try: inf = tk.info or {}
+                except: inf = {}
+                earn_date = "N/A"
+                try:
+                    cal = tk.calendar
+                    if isinstance(cal, dict):
+                        ed = cal.get('Earnings Date')
+                        if ed: earn_date = str(ed[0])[:10] if isinstance(ed, (list, tuple)) else str(ed)[:10]
+                    if earn_date == "N/A":
+                        ed_df = tk.earnings_dates
+                        if ed_df is not None and not ed_df.empty:
+                            fut = ed_df[ed_df.index >= pd.Timestamp.now(tz='UTC')]
+                            if not fut.empty: earn_date = str(fut.index[0])[:10]
+                except: pass
+                eps_est = inf.get('epsForwardQuarter') or inf.get('forwardEps')
+                rev_est = inf.get('revenueEstimate') or inf.get('totalRevenue')
+                beat_str = "N/A"
+                try:
+                    eh = tk.earnings_history
+                    if eh is not None and not eh.empty:
+                        eh_clean = eh.dropna(subset=['epsActual', 'epsEstimate']).sort_index(ascending=False)
+                        if not eh_clean.empty:
+                            last_q = eh_clean.iloc[0]
+                            act, exp = last_q['epsActual'], last_q['epsEstimate']
+                            if exp != 0:
+                                surp = (act - exp) / abs(exp) * 100
+                                beat_str = f"Beat +{surp:.1f}%" if act >= exp else f"Miss {surp:.1f}%"
+                except: pass
+                if beat_str == "N/A":
+                    try:
+                        ed_df = tk.earnings_dates
+                        if ed_df is not None and not ed_df.empty and 'Reported EPS' in ed_df.columns:
+                            past = ed_df[ed_df['Reported EPS'].notna()].sort_index(ascending=False)
+                            if not past.empty:
+                                act, est = past.iloc[0]['Reported EPS'], past.iloc[0]['EPS Estimate']
+                                if pd.notna(est) and est != 0:
+                                    beat_str = f"Beat +{(act-est)/abs(est)*100:.1f}%" if act >= est else f"Miss {(act-est)/abs(est)*100:.1f}%"
+                    except: pass
+                
+                return {
+                    "Ticker": t,
+                    "Name": inf.get('shortName', t),
+                    "Earnings Date": earn_date,
+                    "EPS Est.": f"${eps_est:.2f}" if pd.notna(eps_est) else "N/A",
+                    "Rev Est.": f"${rev_est/1e9:.1f}B" if pd.notna(rev_est) else "N/A",
+                    "Last Q Beat/Miss": beat_str,
+                }
+            except:
+                return {"Ticker":t,"Name":t,"Earnings Date":"N/A","EPS Est.":"N/A","Rev Est.":"N/A","Last Q Beat/Miss":"N/A"}
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            e_rows = list(executor.map(fetch_earn, all_e_tickers))
+            
+        e_df = pd.DataFrame(e_rows)
+        e_df.to_sql('earnings', conn, if_exists='replace', index=False)
+        print(f"Updated earnings data for {len(e_df)} companies.")
+    except Exception as e:
+        print(f"Earnings update failed: {e}")
     
     conn.close()
     print("Update complete. Database saved to:", DB_PATH)

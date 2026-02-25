@@ -196,7 +196,25 @@ def get_market_checklist(bm_prices_full_tuple):
 @st.cache_data(ttl=3600)
 def get_earnings_calendar_data(tickers):
     rows = []
-    for t in tickers:
+    missing_tickers = list(tickers)
+    
+    # 1. Try to load from SQL Database first to avoid Cloud API blocking
+    try:
+        if os.path.exists(DB_PATH):
+            conn = sqlite3.connect(DB_PATH)
+            db_e = pd.read_sql("SELECT * FROM earnings", conn)
+            conn.close()
+            for t in tickers:
+                match = db_e[db_e['Ticker'] == t]
+                if not match.empty:
+                    m = match.iloc[0].to_dict()
+                    rows.append(m)
+                    missing_tickers.remove(t)
+    except Exception:
+        pass
+        
+    # 2. Fetch missing tickets from yfinance
+    for t in missing_tickers:
         try:
             tk = yf.Ticker(t)
             
@@ -268,7 +286,16 @@ def get_earnings_calendar_data(tickers):
             })
         except Exception:
             rows.append({"Ticker":t,"Name":t,"Earnings Date":"N/A","EPS Est.":"N/A","Rev Est.":"N/A","Last Q Beat/Miss":"N/A"})
-    return pd.DataFrame(rows)
+            
+    # Preserve original ticker order
+    final_rows = []
+    for t in tickers:
+        for r in rows:
+            if r['Ticker'] == t:
+                final_rows.append(r)
+                break
+                
+    return pd.DataFrame(final_rows)
 
 @st.cache_data(ttl=900)
 def get_market_news_feed():
