@@ -104,7 +104,7 @@ def fetch_sp500_wiki():
         return ["NVDA","AAPL","MSFT","GOOGL","AMZN","META"]
 
 def get_market_intelligence(bm_prices):
-    if len(bm_prices) < 200: return "N/A","N/A","N/A","","Neutral",50
+    if len(bm_prices) < 200: return "N/A", "Nicht genug Daten", "N/A", "N/A", "Neutral", 50.0, "Neutral", "N/A"
     sma50  = bm_prices.rolling(50).mean().iloc[-1]
     sma200 = bm_prices.rolling(200).mean().iloc[-1]
     curr   = bm_prices.iloc[-1]
@@ -176,7 +176,8 @@ def get_market_checklist(bm_prices_full_tuple):
     except Exception as e:
         results['breadth'] = {"label":"Breadth Check","desc":str(e)[:60],"pass":None}
     try:
-        vix = yf.download("^VIX", period="5d", progress=False, auto_adjust=True)['Close']
+        dl_vix = yf.download("^VIX", period="5d", progress=False, auto_adjust=True)
+        vix = dl_vix['Close'] if 'Close' in dl_vix else pd.Series(dtype='float64')
         if isinstance(vix, pd.DataFrame): vix = vix.iloc[:,0]
         v = float(vix.dropna().iloc[-1])
         results['vix'] = {"label":"VIX Check","desc":f"VIX aktuell: {v:.2f}","pass":bool(v<25)}
@@ -348,16 +349,32 @@ with st.spinner("Synchronisiere Terminal-Daten..."):
     if db_prices is not None and "^GSPC" in db_prices.columns:
         bm_prices_full = db_prices["^GSPC"].dropna()
     else:
-        bm_prices_full = yf.download("^GSPC", period="5y", progress=False, auto_adjust=True)['Close']
+        try:
+            dl = yf.download("^GSPC", period="5y", progress=False, auto_adjust=True)
+            bm_prices_full = dl['Close'] if 'Close' in dl else pd.Series(dtype='float64')
+        except Exception:
+            bm_prices_full = pd.Series(dtype='float64')
         if isinstance(bm_prices_full, pd.DataFrame): bm_prices_full = bm_prices_full.iloc[:,0]
 
     missing_from_db  = [t for t in portfolio_list if db_prices is None or t not in db_prices.columns]
     port_db          = db_prices[[t for t in portfolio_list if db_prices is not None and t in db_prices.columns]] if db_prices is not None else pd.DataFrame()
     if missing_from_db:
-        port_yf = yf.download(missing_from_db, period="4y", progress=False, auto_adjust=True)['Close']
-        live_port_prices = pd.concat([port_db, port_yf], axis=1).ffill()
+        try:
+            dl_port = yf.download(missing_from_db, period="4y", progress=False, auto_adjust=True)
+            port_yf = dl_port['Close'] if 'Close' in dl_port else pd.DataFrame()
+        except Exception:
+            port_yf = pd.DataFrame()
+        
+        # Check if port_db is empty or mostly empty and concatenate safely
+        if not port_db.empty and not port_yf.empty:
+             live_port_prices = pd.concat([port_db, port_yf], axis=1).ffill()
+        elif not port_yf.empty:
+             live_port_prices = port_yf.ffill()
+        else:
+             live_port_prices = port_db.ffill()
     else:
         live_port_prices = port_db.ffill()
+        
     if isinstance(live_port_prices, pd.DataFrame) and isinstance(live_port_prices.columns, pd.MultiIndex):
         live_port_prices.columns = live_port_prices.columns.get_level_values(0)
 
@@ -584,7 +601,8 @@ with t4:
                 bt_data_full = db_prices.loc[s_p:e_date]
             else:
                 st.info("Downloading history from yfinance...")
-                bt_data_full = yf.download(ticks_bt+["^GSPC"],start=s_p,end=e_date,progress=False,threads=True,auto_adjust=True)['Close']
+                dl_bt = yf.download(ticks_bt+["^GSPC"],start=s_p,end=e_date,progress=False,threads=True,auto_adjust=True)
+                bt_data_full = dl_bt['Close'] if 'Close' in dl_bt else pd.DataFrame()
 
             if isinstance(bt_data_full.columns, pd.MultiIndex):
                 bt_data_full.columns = bt_data_full.columns.get_level_values(0)
