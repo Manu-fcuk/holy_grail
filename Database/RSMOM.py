@@ -191,15 +191,17 @@ def get_market_checklist(bm_prices_full_tuple):
         results['abs_mom'] = {"label":"Absolute Momentum","desc":"Fehler","pass":None}
     return results
 
-@st.cache_data(ttl=1800)
-def get_earnings_calendar(tickers):
+@st.cache_data(ttl=3600)
+def fetch_earnings_calendar_data(tickers):
+
+
     rows = []
     for t in tickers:
         try:
             tk = yf.Ticker(t)
             info = tk.info or {}
             
-            # --- Get Earnings Date ---
+            # 1. --- Get Upcoming Earnings Date ---
             earn_date = "N/A"
             try:
                 cal = tk.calendar
@@ -207,47 +209,54 @@ def get_earnings_calendar(tickers):
                     ed = cal.get('Earnings Date')
                     if ed:
                         earn_date = str(ed[0])[:10] if isinstance(ed, (list, tuple)) else str(ed)[:10]
-                elif isinstance(cal, pd.DataFrame) and not cal.empty:
-                    if 'Earnings Date' in cal.index:
-                        v = cal.loc['Earnings Date']
-                        earn_date = str(v.iloc[0])[:10] if hasattr(v, 'iloc') else str(v)[:10]
-            except:
-                pass
-                
-            if earn_date == "N/A":
-                try:
+                if earn_date == "N/A":
                     ed_df = tk.earnings_dates
                     if ed_df is not None and not ed_df.empty:
-                        # Find closest future date
                         future = ed_df[ed_df.index >= pd.Timestamp.now(tz='UTC')]
                         if not future.empty:
                             earn_date = str(future.index[0])[:10]
-                        else:
-                            earn_date = str(ed_df.index[0])[:10]
-                except:
-                    pass
+            except: pass
 
-            # --- Get Estimates ---
+            # 2. --- Get Estimates ---
             eps_est = info.get('epsForwardQuarter') or info.get('forwardEps')
             rev_est = info.get('revenueEstimate') or info.get('totalRevenue')
+            if not eps_est:
+                try: 
+                    cal = tk.calendar
+                    if isinstance(cal, dict): eps_est = cal.get('EPS Estimate')
+                except: pass
             
-            # --- Last Quarter Performance ---
+            # 3. --- Last Quarter Beat/Miss (Robust Fallback) ---
             beat_str = "N/A"
+            # Strategy A: Use earnings_history (Best for actuals)
             try:
-                # Try earnings_dates for reported vs estimate
-                ed_df = tk.earnings_dates
-                if ed_df is not None and not ed_df.empty:
-                    # Look for the last row with reported EPS
-                    past = ed_df[ed_df['Reported EPS'].notna()].sort_index(ascending=False) if 'Reported EPS' in ed_df.columns else pd.DataFrame()
-                    if not past.empty:
-                        last_q = past.iloc[0]
-                        actual = last_q.get('Reported EPS')
-                        estimate = last_q.get('EPS Estimate')
-                        if pd.notna(actual) and pd.notna(estimate) and estimate != 0:
-                            surprise = (actual - estimate) / abs(estimate) * 100
-                            beat_str = f"Beat +{surprise:.1f}%" if actual >= estimate else f"Miss {surprise:.1f}%"
-            except:
-                pass
+                eh = tk.earnings_history
+                if eh is not None and not eh.empty:
+                    # Sort by date descending and get the first one that has actual and estimate
+                    eh_clean = eh.dropna(subset=['epsActual', 'epsEstimate']).sort_index(ascending=False)
+                    if not eh_clean.empty:
+                        last_q = eh_clean.iloc[0]
+                        act = last_q['epsActual']
+                        exp = last_q['epsEstimate']
+                        if exp != 0:
+                            surp = (act - exp) / abs(exp) * 100
+                            beat_str = f"Beat +{surp:.1f}%" if act >= exp else f"Miss {surp:.1f}%"
+            except: pass
+            
+            # Strategy B: Fallback to earnings_dates if history failed
+            if beat_str == "N/A":
+                try:
+                    ed_df = tk.earnings_dates
+                    if ed_df is not None and not ed_df.empty and 'Reported EPS' in ed_df.columns:
+                        past = ed_df[ed_df['Reported EPS'].notna()].sort_index(ascending=False)
+                        if not past.empty:
+                            last_q = past.iloc[0]
+                            act, est = last_q['Reported EPS'], last_q['EPS Estimate']
+                            if pd.notna(est) and est != 0:
+                                surp = (act - est) / abs(est) * 100
+                                beat_str = f"Beat +{surp:.1f}%" if act >= est else f"Miss {surp:.1f}%"
+                except: pass
+
 
             rows.append({
                 "Ticker": t,
@@ -532,7 +541,7 @@ with t4:
     # --- Earnings Calendar ---
     st.markdown("### 📅 Earnings Kalender — Watchlist")
     with st.spinner("Lade Earnings-Daten..."):
-        earn_df = get_earnings_calendar(portfolio_list)
+        earn_df = fetch_earnings_calendar_data(portfolio_list)
     if not earn_df.empty:
         def beat_color(val):
             if 'Beat' in str(val): return 'color: #3fb950; font-weight: bold'
