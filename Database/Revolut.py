@@ -380,11 +380,38 @@ with st.sidebar:
     hold_mo_val   = st.select_slider("Holding (Mo)", options=[1,2,3,4,6], value=1)
     sl_input_val  = st.slider("Stop Loss %", 5, 30, 15)
     if st.button("🔄 Update DB Now"):
-        with st.status("Updating Local Database..."):
+        with st.status("Updating Local Database...", expanded=True) as status:
             import subprocess
             import sys
-            subprocess.run([sys.executable, os.path.join(BASE_DIR,"db_updater.py")])
-            st.success("Database Updated!")
+            
+            st.write("📡 Starte Downloads (Aktien, Anleihen, Rohstoffe)...")
+            out_area = st.empty()
+            
+            process = subprocess.Popen(
+                [sys.executable, os.path.join(BASE_DIR, "db_updater.py")],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1
+            )
+            
+            # Liest den Text-Output in Echtzeit und aktualisiert das UI
+            log_output = []
+            for line in iter(process.stdout.readline, ""):
+                line = line.strip()
+                if line:
+                    # Bei der yfinance Progress-Bar gibts viele leere/komische Returns, 
+                    # wir behalten die letzten paar Zeilen fürs Gefühl
+                    log_output.append(line)
+                    out_area.code("\n".join(log_output[-15:]), language="text")
+            
+            process.wait()
+            if process.returncode == 0:
+                status.update(label="Update Erfolgreich abgeschlossen!", state="complete", expanded=False)
+                st.success("✅ **Datenbank ist auf dem neuesten Stand!** Dashboard am besten kurz neuladen (CMD+R / F5).")
+            else:
+                status.update(label="Fehler beim Update!", state="error", expanded=True)
+                st.error("🚨 Es gab ein Problem beim Downloadvorgang.")
 
 # ── 4. DATA FETCH ──────────────────────────────────────────────────────────────
 with st.spinner("Synchronisiere Terminal-Daten..."):
