@@ -88,10 +88,23 @@ def calc_rsi(prices, window=14):
     return 100 - (100 / (1 + (gain / loss.replace(0, np.nan)).ffill()))
 
 def get_revolut_list():
+    extra_revolut = [
+        # EU / Intl
+        "NVO", "ASML", "NVS", "AZN", "SHEL", "TTE", "SAP", "SNY", "SIEGY", "HDB", "TSM", 
+        "BABA", "NIO", "SONY", "SPOT", "SHOP", "PDD", "JD", "BIDU", "MNDY", "ARM",
+        # Bonds (Anleihen)
+        "TLT", "IEF", "SHY", "LQD", "HYG", "BND", "AGG", "EMB", "MBB",
+        # Commodities (Rohstoffe)
+        "GLD", "IAU", "SLV", "USO", "UNG", "PDBC", "DBA", "COPX", "URA", "PPLT", "PALL"
+    ]
+    
     _, companies = get_db_data()
     if companies is not None:
-        return companies['Symbol'].tolist()
-    return list(set(fetch_revolut_wiki() + ["NVO", "ASML", "NVS", "AZN", "SHEL", "TTE", "SAP", "SNY", "SIEGY", "HDB", "TSM", "BABA", "NIO", "SONY", "SPOT", "SHOP", "PDD", "JD", "BIDU", "MNDY", "ARM"]))
+        base_list = companies['Symbol'].tolist()
+    else:
+        base_list = fetch_revolut_wiki()
+        
+    return list(set(base_list + extra_revolut))
 
 @st.cache_data(ttl=3600)
 def fetch_revolut_wiki():
