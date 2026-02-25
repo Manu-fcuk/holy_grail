@@ -382,7 +382,8 @@ with st.sidebar:
     if st.button("🔄 Update DB Now"):
         with st.status("Updating Local Database..."):
             import subprocess
-            subprocess.run(["python3", os.path.join(BASE_DIR,"db_updater.py")])
+            import sys
+            subprocess.run([sys.executable, os.path.join(BASE_DIR,"db_updater.py")])
             st.success("Database Updated!")
 
 # ── 4. DATA FETCH ──────────────────────────────────────────────────────────────
