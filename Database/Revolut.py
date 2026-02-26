@@ -402,9 +402,8 @@ with st.sidebar:
             log_output = []
             for line in iter(process.stdout.readline, ""):
                 line = line.strip()
-                if line:
-                    # Bei der yfinance Progress-Bar gibts viele leere/komische Returns, 
-                    # wir behalten die letzten paar Zeilen fürs Gefühl
+                # Unterdrücke die hässlichen Yahoo Finance "Invalid Crumb" / 401 Fehler im UI
+                if line and "HTTP Error" not in line and "Invalid Crumb" not in line and "quoteSummary" not in line:
                     log_output.append(line)
                     out_area.code("\n".join(log_output[-15:]), language="text")
             
