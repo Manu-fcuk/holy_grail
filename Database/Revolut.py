@@ -659,20 +659,6 @@ with t4:
         st.dataframe(earn_df.style.map(beat_color, subset=['Last Q Beat/Miss']), width='stretch', hide_index=True)
 
     st.markdown("---")
-    # --- News Feed ---
-    st.markdown("### 📰 Markt-Newsfeed")
-    with st.spinner("Lade aktuelle Nachrichten..."):
-        news = get_market_news_feed()
-    if news:
-        for n in news[:12]:
-            st.markdown(f'''<div class="news-card">
-                <a href="{n['link']}" target="_blank" style="color:#e6edf3;text-decoration:none;font-weight:bold;">{n['title']}</a>
-                <div style="font-size:0.78em;color:#8b949e;margin-top:3px;">{n.get('published','')}</div>
-            </div>''', unsafe_allow_html=True)
-    else:
-        st.info("Keine aktuellen Nachrichten geladen.")
-
-    st.markdown("---")
     # --- Backtest Engine ---
     col_c1, col_c2 = st.columns(2)
     cap_in = col_c1.number_input("Backtest Capital (USD):", value=10000)
@@ -827,6 +813,19 @@ with t5:
                 </div>''', unsafe_allow_html=True)
         else:
             st.info("Keine Events in den nächsten 45 Tagen.")
+
+    st.markdown("---")
+    st.subheader("📰 Market Newsfeed")
+    with st.spinner("Lade aktuelle Nachrichten..."):
+        news = get_market_news_feed()
+    if news:
+        for n in news[:12]:
+            st.markdown(f'''<div class="news-card">
+                <a href="{n['link']}" target="_blank" style="color:#e6edf3;text-decoration:none;font-weight:bold;">{n['title']}</a>
+                <div style="font-size:0.78em;color:#8b949e;margin-top:3px;">{n.get('published','')}</div>
+            </div>''', unsafe_allow_html=True)
+    else:
+        st.info("Keine aktuellen Nachrichten geladen.")
 
     st.markdown("---")
     st.markdown(f'<div class="disclaimer">⚠️ LEGAL NOTICE: Not financial advice. Investing involves risk of loss. © {datetime.now().year} Manuel Kössler.</div>', unsafe_allow_html=True)
