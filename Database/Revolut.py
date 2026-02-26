@@ -552,38 +552,56 @@ with t1:
     if not bm_prices_full.empty:
         bm_rsi_val = calc_rsi(bm_prices_full.dropna()).iloc[-1]
         res.append({"Ticker":"^GSPC","Name":"S&P 500 Index (Benchmark)","Sector":"Benchmark","RS Score":0.0,"RSI(14)":bm_rsi_val,"Action":"🟢 HOLD (BULLISH)" if m_bull else "🔴 SELL (BEARISH)"})
-    for t in portfolio_list:
-        if t in live_port_prices.columns:
+    
+    val_ports = [t for t in portfolio_list if t in live_port_prices.columns]
+    if val_ports and not bm_prices_full.empty:
+        port_d = live_port_prices[val_ports].ffill()
+        port_bm = bm_prices_full.reindex(port_d.index).ffill()
+        p_ratio = port_d.div(port_bm, axis=0)
+        p_rs = (p_ratio / p_ratio.rolling(window=50).mean()) - 1
+        
+        for t in val_ports:
             p = live_port_prices[t].dropna()
-            rs_s = calc_rs_stable(p, bm_prices_full.reindex(p.index).ffill())
-            ri_s = calc_rsi(p)
-            if not rs_s.empty and not ri_s.empty:
+            if len(p)>0:
+                ri_s = calc_rsi(p)
+                rs_val = p_rs[t].dropna().iloc[-1] if not p_rs[t].dropna().empty else 0
+                ri_val = ri_s.iloc[-1] if not ri_s.empty else 50
                 d = get_company_static_info(t)
-                res.append({"Ticker":t,"Name":d["Name"],"Sector":d["Sector"],"RS Score":rs_s.iloc[-1],"RSI(14)":ri_s.iloc[-1],"Action":"🟢 HOLD" if rs_s.iloc[-1]>0 else "🔴 SELL"})
+                res.append({"Ticker":t,"Name":d["Name"],"Sector":d["Sector"],"RS Score":rs_val,"RSI(14)":ri_val,"Action":"🟢 HOLD" if rs_val>0 else "🔴 SELL"})
+            
     if res:
         st.dataframe(pd.DataFrame(res).sort_values("RS Score",ascending=False).style.background_gradient(subset=['RS Score'],cmap='RdYlGn').format(subset=['RS Score','RSI(14)'],formatter="{:.2f}"),width='stretch',hide_index=True)
 
 # ── TAB 2: SCANNER ────────────────────────────────────────────────────────────
 with t2:
     if st.button("🚀 Run Revolut Scan"):
-        with st.spinner("Scanning Revolut Leaders..."):
+        with st.spinner("Scanning Revolut Leaders (Vectorized & Ultra-Fast)..."):
             prices, companies = get_db_data()
             if prices is not None:
                 sp_data   = prices.ffill()
-                opps      = []
                 info_dict = companies.set_index('Symbol').to_dict('index') if companies is not None else {}
                 sp500_tk  = get_revolut_list()
-                for t in sp_data.columns:
-                    if t not in sp500_tk or t=="^GSPC" or t in portfolio_list: continue
-                    p = sp_data[t].dropna()
-                    if len(p)<60: continue
-                    rs_s = calc_rs_stable(p, bm_prices_full.reindex(p.index).ffill())
-                    if not rs_s.empty and rs_s.iloc[-1]>0.12:
+                
+                # VECTORIZED RS CALCULATION
+                valid_t = [t for t in sp_data.columns if t in sp500_tk and t != "^GSPC" and t not in portfolio_list]
+                scan_d = sp_data[valid_t]
+                scan_bm = bm_prices_full.reindex(scan_d.index).ffill()
+                ratio_df = scan_d.div(scan_bm, axis=0)
+                scan_rs = (ratio_df / ratio_df.rolling(window=50).mean()) - 1
+                
+                latest_rs = scan_rs.iloc[-1]
+                latest_rs = latest_rs[latest_rs > 0.12].dropna().sort_values(ascending=False)
+                
+                opps = []
+                for t, rs_val in latest_rs.items():
+                    # Only accept stocks with enough history
+                    if sp_data[t].notna().sum() >= 60:
                         d = info_dict.get(t,{"Security":t,"GICS Sector":"N/A"})
-                        opps.append({"Ticker":t,"Name":d["Security"],"Sector":d["GICS Sector"],"RS Score":rs_s.iloc[-1]})
+                        opps.append({"Ticker":t,"Name":d["Security"],"Sector":d["GICS Sector"],"RS Score":rs_val})
+                
                 if opps:
-                    st.table(pd.DataFrame(opps).sort_values("RS Score",ascending=False).head(15))
-                    st.code(", ".join(pd.DataFrame(opps)['Ticker'].tolist()), language="text")
+                    st.table(pd.DataFrame(opps).head(15))
+                    st.code(", ".join(pd.DataFrame(opps)['Ticker'].tolist()[:15]), language="text")
                 else:
                     st.info("Keine neuen Leader gefunden.")
             else:
@@ -685,8 +703,10 @@ with t4:
             common = bt_d.index.intersection(bm_f.index)
             bt_d, bm_f = bt_d.loc[common], bm_f.loc[common]
 
-            rs_dict = {t: calc_rs_stable(bt_d[t], bm_f) for t in ticks_bt if t in bt_d.columns and t!="^GSPC"}
-            rs_h    = pd.concat(rs_dict, axis=1)
+            # VECTORIZED RS CALCULATION (Ultra-fast)
+            valid_tickers = [t for t in ticks_bt if t in bt_d.columns and t != "^GSPC"]
+            ratio_df = bt_d[valid_tickers].div(bm_f, axis=0)
+            rs_h = (ratio_df / ratio_df.rolling(window=50).mean()) - 1
 
             t_d = bt_d.loc[s_date:].groupby(pd.Grouper(freq=f'{hold_mo_val}ME')).apply(lambda x: x.index[-1] if not x.empty else None).dropna()
             c, c_h, t_l, f_dt = cap_in, [], [], None
