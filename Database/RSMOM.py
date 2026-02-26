@@ -552,7 +552,7 @@ with t2:
             if prices is not None:
                 sp_data   = prices.ffill()
                 opps      = []
-                info_dict = companies.set_index('Symbol').to_dict('index')
+                info_dict = companies.drop_duplicates(subset=['Symbol']).set_index('Symbol').to_dict('index') if companies is not None else {}
                 sp500_tk  = get_sp500_list()
                 for t in sp_data.columns:
                     if t not in sp500_tk or t=="^GSPC" or t in portfolio_list: continue

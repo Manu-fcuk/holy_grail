@@ -578,7 +578,7 @@ with t2:
             prices, companies = get_db_data()
             if prices is not None:
                 sp_data   = prices.ffill()
-                info_dict = companies.set_index('Symbol').to_dict('index') if companies is not None else {}
+                info_dict = companies.drop_duplicates(subset=['Symbol']).set_index('Symbol').to_dict('index') if companies is not None else {}
                 sp500_tk  = get_revolut_list()
                 
                 # VECTORIZED RS CALCULATION

@@ -209,8 +209,7 @@ with t2:
                 # Use DB data (already filtered for S&P 500 during update)
                 sp_data = prices.ffill()
                 opps = []
-                # Map ticker to company metadata
-                info_dict = companies.set_index('Symbol').to_dict('index')
+                info_dict = companies.drop_duplicates(subset=['Symbol']).set_index('Symbol').to_dict('index') if companies is not None else {}
                 
                 sp500_tickers = get_sp500_list()
                 
