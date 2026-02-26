@@ -623,25 +623,55 @@ with t2:
 with t3:
     sel = st.selectbox("Deep Dive Asset:", portfolio_list)
     if sel:
+        # 1. Lade Basis-Schlusskurse aus lokaler DB (immun gegen Rate Limits!)
         if db_prices is not None and sel in db_prices.columns:
             df_c = db_prices[[sel]].dropna(); df_c.columns=['Close']
         else:
-            df_c = yf.download(sel, period="1y", progress=False, auto_adjust=True)
-        if isinstance(df_c.columns, pd.MultiIndex): df_c.columns = df_c.columns.get_level_values(0)
-        if 'Open' not in df_c.columns:
-            df_c = yf.download(sel, period="1y", progress=False, auto_adjust=True)
-            if isinstance(df_c.columns, pd.MultiIndex): df_c.columns = df_c.columns.get_level_values(0)
-        df_c['SMA50']  = df_c['Close'].rolling(50).mean()
-        df_c['SMA200'] = df_c['Close'].rolling(200).mean()
-        fig = make_subplots(rows=2,cols=1,shared_xaxes=True,row_heights=[0.7,0.3],vertical_spacing=0.05)
-        fig.add_trace(go.Candlestick(x=df_c.index,open=df_c['Open'],high=df_c['High'],low=df_c['Low'],close=df_c['Close'],name="Price"),row=1,col=1)
-        fig.add_trace(go.Scatter(x=df_c.index,y=df_c['SMA50'],line=dict(color='orange'),name="SMA 50"),row=1,col=1)
-        fig.add_trace(go.Scatter(x=df_c.index,y=df_c['SMA200'],line=dict(color='red'),name="SMA 200"),row=1,col=1)
-        rs_l = calc_rs_stable(df_c['Close'], bm_prices_full.reindex(df_c.index).ffill())
-        if not rs_l.empty:
-            fig.add_trace(go.Scatter(x=rs_l.index,y=rs_l,fill='tozeroy',line=dict(color='lime'),name="RS Score"),row=2,col=1)
-        fig.update_layout(height=700,template="plotly_dark",xaxis_rangeslider_visible=False)
-        st.plotly_chart(fig,width='stretch')
+            df_c = pd.DataFrame()
+
+        # 2. Versuche OHLVC-Daten für schöne Kerzen live zu laden
+        try:
+            df_live = yf.download(sel, period="1y", progress=False, auto_adjust=True)
+            if isinstance(df_live.columns, pd.MultiIndex): df_live.columns = df_live.columns.get_level_values(0)
+        except Exception:
+            df_live = pd.DataFrame()
+        
+        # 3. Fallback Logik: Wenn Yahoo blockiert, nutze nur die lokalen Close-Kurse!
+        if 'Close' in df_live.columns and not df_live.empty and 'Open' in df_live.columns:
+            df_c = df_live  # Erfolgreich live geholt (inkl. OHLC)
+            has_candles = True
+        else:
+            # yfinance Rate Limit: Wir nehmen das, was zuverlässig lokal in der DB liegt!
+            has_candles = False
+            if not df_c.empty:
+                cutoff = datetime.now() - timedelta(days=365)
+                df_c = df_c[df_c.index >= pd.Timestamp(cutoff)]
+
+        if not df_c.empty:
+            df_c['SMA50']  = df_c['Close'].rolling(50).mean()
+            df_c['SMA200'] = df_c['Close'].rolling(200).mean()
+            
+            fig = make_subplots(rows=2,cols=1,shared_xaxes=True,row_heights=[0.7,0.3],vertical_spacing=0.05)
+            
+            if has_candles:
+                fig.add_trace(go.Candlestick(x=df_c.index,open=df_c['Open'],high=df_c['High'],low=df_c['Low'],close=df_c['Close'],name="Price"),row=1,col=1)
+            else:
+                fig.add_trace(go.Scatter(x=df_c.index,y=df_c['Close'],mode='lines',line=dict(color='white',width=2),name="Price (Local DB)"),row=1,col=1)
+            
+            fig.add_trace(go.Scatter(x=df_c.index,y=df_c['SMA50'],line=dict(color='orange'),name="SMA 50"),row=1,col=1)
+            fig.add_trace(go.Scatter(x=df_c.index,y=df_c['SMA200'],line=dict(color='red'),name="SMA 200"),row=1,col=1)
+            
+            rs_l = calc_rs_stable(df_c['Close'], bm_prices_full.reindex(df_c.index).ffill())
+            if not rs_l.empty:
+                fig.add_trace(go.Scatter(x=rs_l.index,y=rs_l,fill='tozeroy',line=dict(color='lime'),name="RS Score"),row=2,col=1)
+            
+            fig.update_layout(height=700,template="plotly_dark",xaxis_rangeslider_visible=False)
+            st.plotly_chart(fig,width='stretch')
+            
+            if not has_candles:
+                st.info("ℹ️ Zeige Linien-Chart aus lokaler Datenbank (Yahoo live Modul aktuell rate-limited).")
+        else:
+            st.error(f"Keine Kursdaten für {sel} gefunden (Yahoo Rate Limit und nicht lokaler Scanner).")
 
 # ── TAB 4: BACKTEST ───────────────────────────────────────────────────────────
 with t4:
