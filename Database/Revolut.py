@@ -596,12 +596,24 @@ with t2:
                 for t, rs_val in latest_rs.items():
                     # Only accept stocks with enough history
                     if sp_data[t].notna().sum() >= 60:
-                        d = info_dict.get(t,{"Security":t,"GICS Sector":"N/A"})
-                        opps.append({"Ticker":t,"Name":d["Security"],"Sector":d["GICS Sector"],"RS Score":rs_val})
+                        opps.append((t, rs_val))
                 
-                if opps:
-                    st.table(pd.DataFrame(opps).head(15))
-                    st.code(", ".join(pd.DataFrame(opps)['Ticker'].tolist()[:15]), language="text")
+                # Fetch details only for the Top 15 to keep it ultra-fast
+                top_opps = []
+                for t, rs_val in opps[:15]:
+                    if t in info_dict:
+                        d = info_dict[t]
+                        sec_name = d.get("Security", t)
+                        sec_sect = d.get("GICS Sector", "N/A")
+                    else:
+                        d = get_company_static_info(t)
+                        sec_name = d.get("Name", t)
+                        sec_sect = d.get("Sector", "N/A")
+                    top_opps.append({"Ticker": t, "Name": sec_name, "Sector": sec_sect, "RS Score": rs_val})
+                
+                if top_opps:
+                    st.table(pd.DataFrame(top_opps))
+                    st.code(", ".join([o['Ticker'] for o in top_opps]), language="text")
                 else:
                     st.info("Keine neuen Leader gefunden.")
             else:
