@@ -176,13 +176,22 @@ def get_market_checklist(bm_prices_full_tuple):
     except Exception as e:
         results['breadth'] = {"label":"Breadth Check","desc":str(e)[:60],"pass":None}
     try:
-        dl_vix = yf.download("^VIX", period="5d", progress=False, auto_adjust=True)
-        vix = dl_vix['Close'] if 'Close' in dl_vix else pd.Series(dtype='float64')
-        if isinstance(vix, pd.DataFrame): vix = vix.iloc[:,0]
-        v = float(vix.dropna().iloc[-1])
+        try:
+            # 1. Schneller, robuster Bypass via raw requests (umgeht yfinance Rate Limit)
+            import requests
+            url = 'https://query2.finance.yahoo.com/v8/finance/chart/^VIX'
+            r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=2)
+            v = float(r.json()['chart']['result'][0]['meta']['regularMarketPrice'])
+        except:
+            # 2. Fallback: Normaler yfinance Download
+            dl_vix = yf.download("^VIX", period="5d", progress=False, auto_adjust=True)
+            vix = dl_vix['Close'] if 'Close' in dl_vix else pd.Series(dtype='float64')
+            if isinstance(vix, pd.DataFrame): vix = vix.iloc[:,0]
+            v = float(vix.dropna().iloc[-1])
+            
         results['vix'] = {"label":"VIX Check","desc":f"VIX aktuell: {v:.2f}","pass":bool(v<25)}
     except:
-        results['vix'] = {"label":"VIX Check","desc":"Nicht ladbar","pass":None}
+        results['vix'] = {"label":"VIX Check","desc":"Nicht ladbar (Rate Limit)","pass":None}
     try:
         if len(bm_prices_full) >= 252:
             r = (bm_prices_full.iloc[-1]/bm_prices_full.iloc[-252]-1)*100
