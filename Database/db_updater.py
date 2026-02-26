@@ -28,12 +28,7 @@ def update_database():
     
     # 1. Update Company Info Table
     sp_df = get_sp500_list()
-    if not sp_df.empty:
-        sp_df.to_sql('companies', conn, if_exists='replace', index=False)
-        print(f"Updated metadata for {len(sp_df)} companies.")
-
-    # 2. Download Price Data
-    tickers = sp_df['Symbol'].tolist()
+    tickers = sp_df['Symbol'].tolist() if not sp_df.empty else []
     
     # Add Revolut extra list so we cache all 1,000+ EU/Intl/Bond/Commodity tickers in the DB too!
     extra_revolut = [
@@ -46,8 +41,19 @@ def update_database():
         "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "ADA-USD", "DOGE-USD",
         "DOT-USD", "MATIC-USD", "SHIB-USD", "LTC-USD", "AVAX-USD", "LINK-USD", "UNI-USD"
     ]
-    tickers.extend([t for t in extra_revolut if t not in tickers])
+    extra_new = [t for t in extra_revolut if t not in tickers]
+    tickers.extend(extra_new)
     
+    if not sp_df.empty:
+        extra_df = pd.DataFrame({
+            'Symbol': extra_new,
+            'Security': ['N/A'] * len(extra_new),
+            'GICS Sector': ['N/A'] * len(extra_new)
+        })
+        full_df = pd.concat([sp_df, extra_df], ignore_index=True)
+        full_df.to_sql('companies', conn, if_exists='replace', index=False)
+        print(f"Updated metadata for {len(full_df)} companies in DB.")
+
     # Adding benchmark index
     tickers.append("^GSPC")
     
