@@ -600,14 +600,18 @@ with t2:
                 # Fetch details only for the Top 15 to keep it ultra-fast
                 top_opps = []
                 for t, rs_val in opps[:15]:
+                    sec_name, sec_sect = "N/A", "N/A"
                     if t in info_dict:
                         d = info_dict[t]
-                        sec_name = d.get("Security", t)
+                        sec_name = d.get("Security", "N/A")
                         sec_sect = d.get("GICS Sector", "N/A")
-                    else:
-                        d = get_company_static_info(t)
-                        sec_name = d.get("Name", t)
-                        sec_sect = d.get("Sector", "N/A")
+                    
+                    # Wenn wir nur "N/A" als Platzhalter in der Datenbank haben, frage Yahoo Live!
+                    if sec_name == "N/A" or str(sec_name).strip() == "" or sec_name == t:
+                        info = get_company_static_info(t)
+                        sec_name = info.get("Name", t)
+                        sec_sect = info.get("Sector", "N/A")
+                        
                     top_opps.append({"Ticker": t, "Name": sec_name, "Sector": sec_sect, "RS Score": rs_val})
                 
                 if top_opps:
