@@ -58,14 +58,39 @@ def update_database():
     tickers.append("^GSPC")
     
     print(f"Downloading data for {len(tickers)} tickers...")
-    # Downloading 11 years to ensure 10y backtest + buffer for moving averages (200 SMA)
-    data = yf.download(tickers, period="11y", progress=True, threads=True, auto_adjust=True)['Close']
+    
+    # 2.5 Inkrementelles Update versuchen um massenhaften 11-Jahre Download zu verhindern (Schutz vor IP-Sperre!)
+    try:
+        existing_prices = pd.read_sql_query('SELECT * FROM prices', conn, index_col='Date')
+        existing_prices.index = pd.to_datetime(existing_prices.index)
+        latest_date = existing_prices.index.max()
+        if pd.isna(latest_date):
+            raise Exception("No valid date in DB")
+        
+        # Gehe 7 Tage zurück als Sicherheitspuffer (für Splits etc.)
+        start_date = (latest_date - pd.Timedelta(days=7)).strftime('%Y-%m-%d')
+        print(f"✅ Existing DB found! Resuming fast download from {start_date}...")
+        data = yf.download(tickers, start=start_date, progress=True, threads=True, auto_adjust=True)['Close']
+    except Exception as e:
+        print("⚠️ No valid history found. Starting fresh full 11-year download...")
+        data = yf.download(tickers, period="11y", progress=True, threads=True, auto_adjust=True)['Close']
+        existing_prices = pd.DataFrame()
     
     if isinstance(data.columns, pd.MultiIndex):
         data.columns = data.columns.get_level_values(0)
 
+    # Falls wir iterativ laden, fügen wir alte und neue zusammen!
+    if not existing_prices.empty and not data.empty:
+        data.index = pd.to_datetime(data.index)
+        # Lösche die sich überschneidenden Puffer-Tage aus der alten DB und hänge den aktualisierten live-Schwung unten dran
+        existing_prices = existing_prices[~existing_prices.index.isin(data.index)]
+        combined = pd.concat([existing_prices, data]).sort_index()
+        data = combined
+
     # 3. Store in Database
-    data.to_sql('prices', conn, if_exists='replace', index=True)
+    if not data.empty:
+        data.to_sql('prices', conn, if_exists='replace', index=True)
+        print(f"✅ Successfully saved {len(data)} trading days to DB.")
     
     # 4. Update Earnings Table (multithreaded to speed up)
     try:
@@ -130,9 +155,27 @@ def update_database():
             except:
                 return {"Ticker":t,"Name":t,"Earnings Date":"N/A","EPS Est.":"N/A","Rev Est.":"N/A","Last Q Beat/Miss":"N/A"}
 
-        # Verwende hier maximal 2 Threads und ein Sleep, da Yahoo Finance sonst die IP blockt ("Rate Limit Error")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            e_rows = list(executor.map(fetch_earn, all_e_tickers))
+        # In Batches (Häppchen) laden mit künstlichen Zwangspausen ("Throttling"), 
+        # da Yahoo Finance sonst sofort einen "Rate Limit Error 401: Invalid Crumb" abfeuert
+        import time
+        import random
+        
+        e_rows = []
+        batch_size = 40
+        total_batches = (len(all_e_tickers) // batch_size) + 1
+        
+        print(f"Fetching Earnings in {total_batches} staggered batches to avoid Rate Limits...")
+        for i in range(0, len(all_e_tickers), batch_size):
+            batch = all_e_tickers[i:i+batch_size]
+            print(f"  -> Batch {(i//batch_size)+1}/{total_batches} ({len(batch)} tickers)...")
+            
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+                e_rows.extend(list(executor.map(fetch_earn, batch)))
+                
+            # Künstliche Pause zwischen den Batches, um nicht als DoS-Angreifer markiert zu werden!
+            if i + batch_size < len(all_e_tickers):
+                sleep_time = random.uniform(2.5, 4.5)
+                time.sleep(sleep_time)
             
         e_df = pd.DataFrame(e_rows)
         e_df.to_sql('earnings', conn, if_exists='replace', index=False)
